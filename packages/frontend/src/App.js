@@ -1,126 +1,142 @@
-import React, { useState, useEffect } from 'react';
-import './App.css';
+import React, { useState } from 'react';
+import Alert from '@mui/material/Alert';
+import Box from '@mui/material/Box';
+import Container from '@mui/material/Container';
+import Paper from '@mui/material/Paper';
+import Snackbar from '@mui/material/Snackbar';
+import Typography from '@mui/material/Typography';
+import AddTaskForm from './components/AddTaskForm';
+import DeleteConfirmDialog from './components/DeleteConfirmDialog';
+import EditTaskDialog from './components/EditTaskDialog';
+import TaskList from './components/TaskList';
+import useTasks from './hooks/useTasks';
 
 function App() {
-  const [data, setData] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
-  const [newItem, setNewItem] = useState('');
+  const { tasks, loading, error, addTask, updateTask, toggleComplete, deleteTask } = useTasks();
 
-  useEffect(() => {
-    fetchData();
-  }, []);
+  const [snackbar, setSnackbar] = useState({ open: false, message: '', severity: 'success' });
+  const [editTarget, setEditTarget] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  const fetchData = async () => {
+  const showSnackbar = (message, severity = 'success') => {
+    setSnackbar({ open: true, message, severity });
+  };
+
+  const handleAdd = async (name, due_date) => {
     try {
-      setLoading(true);
-      const response = await fetch('/api/items');
-      if (!response.ok) {
-        throw new Error('Network response was not ok');
-      }
-      const result = await response.json();
-      setData(result);
-      setError(null);
+      await addTask(name, due_date);
+      showSnackbar('Task added');
     } catch (err) {
-      setError('Failed to fetch data: ' + err.message);
-      console.error('Error fetching data:', err);
+      showSnackbar(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const handleSaveEdit = async (id, fields) => {
+    try {
+      await updateTask(id, fields);
+      showSnackbar('Task updated');
+    } catch (err) {
+      showSnackbar(err.message, 'error');
+      throw err;
+    }
+  };
+
+  const handleToggleComplete = async (id) => {
+    try {
+      await toggleComplete(id);
+    } catch (err) {
+      showSnackbar(err.message, 'error');
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    try {
+      await deleteTask(deleteTarget.id);
+      showSnackbar('Task deleted');
+    } catch (err) {
+      showSnackbar(err.message, 'error');
     } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!newItem.trim()) return;
-
-    try {
-      const response = await fetch('/api/items', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name: newItem }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to add item');
-      }
-
-      const result = await response.json();
-      setData([...data, result]);
-      setNewItem('');
-    } catch (err) {
-      setError('Error adding item: ' + err.message);
-      console.error('Error adding item:', err);
-    }
-  };
-
-  const handleDelete = async (itemId) => {
-    try {
-      const response = await fetch(`/api/items/${itemId}`, {
-        method: 'DELETE',
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to delete item');
-      }
-
-      setData(data.filter(item => item.id !== itemId));
-      setError(null);
-    } catch (err) {
-      setError('Error deleting item: ' + err.message);
-      console.error('Error deleting item:', err);
+      setDeleteTarget(null);
     }
   };
 
   return (
-    <div className="App">
-      <header className="App-header">
-        <h1>To Do App</h1>
-        <p>Keep track of your tasks</p>
-      </header>
+    <Box sx={{ bgcolor: 'background.default', minHeight: '100vh' }}>
+      <Box
+        component="header"
+        sx={{ bgcolor: 'primary.main', color: 'white', py: 3, mb: 4, boxShadow: 2 }}
+      >
+        <Container maxWidth="md">
+          <Typography variant="h4" component="h1" fontWeight={700}>
+            To Do App
+          </Typography>
+          <Typography variant="subtitle1">Keep track of your tasks</Typography>
+        </Container>
+      </Box>
 
-      <main>
-        <section className="add-item-section">
-          <h2>Add New Item</h2>
-          <form onSubmit={handleSubmit}>
-            <input
-              type="text"
-              value={newItem}
-              onChange={(e) => setNewItem(e.target.value)}
-              placeholder="Enter item name"
-            />
-            <button type="submit">Add Item</button>
-          </form>
-        </section>
+      <Container maxWidth="md" component="main">
+        <Paper elevation={2} sx={{ p: 3, mb: 4 }}>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Add New Task
+          </Typography>
+          <AddTaskForm onAdd={handleAdd} />
+        </Paper>
 
-        <section className="items-section">
-          <h2>Items from Database</h2>
-          {loading && <p>Loading data...</p>}
-          {error && <p className="error">{error}</p>}
-          {!loading && !error && (
-            <ul>
-              {data.length > 0 ? (
-                data.map((item) => (
-                  <li key={item.id}>
-                    <span>{item.name}</span>
-                    <button 
-                      onClick={() => handleDelete(item.id)}
-                      className="delete-btn"
-                      type="button"
-                    >
-                      Delete
-                    </button>
-                  </li>
-                ))
-              ) : (
-                <p>No items found. Add some!</p>
-              )}
-            </ul>
+        <Paper elevation={2} sx={{ p: 3 }}>
+          <Typography variant="h6" component="h2" gutterBottom>
+            Tasks
+          </Typography>
+
+          {loading && (
+            <Typography color="text.secondary">Loading tasks…</Typography>
           )}
-        </section>
-      </main>
-    </div>
+
+          {!loading && error && (
+            <Alert severity="error" sx={{ mt: 1 }}>{error}</Alert>
+          )}
+
+          {!loading && !error && (
+            <TaskList
+              tasks={tasks}
+              onEdit={(task) => setEditTarget(task)}
+              onDelete={(task) => setDeleteTarget(task)}
+              onToggleComplete={handleToggleComplete}
+            />
+          )}
+        </Paper>
+      </Container>
+
+      <EditTaskDialog
+        open={Boolean(editTarget)}
+        task={editTarget}
+        onClose={() => setEditTarget(null)}
+        onSave={handleSaveEdit}
+      />
+
+      <DeleteConfirmDialog
+        open={Boolean(deleteTarget)}
+        task={deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <Snackbar
+        open={snackbar.open}
+        autoHideDuration={3000}
+        onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+        aria-live="polite"
+      >
+        <Alert
+          severity={snackbar.severity}
+          onClose={() => setSnackbar((s) => ({ ...s, open: false }))}
+          variant="filled"
+          sx={{ width: '100%' }}
+        >
+          {snackbar.message}
+        </Alert>
+      </Snackbar>
+    </Box>
   );
 }
 
